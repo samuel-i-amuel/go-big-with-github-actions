@@ -1,0 +1,74 @@
+name: Matrix Scraper
+
+# On means when will the action be triggered
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    name: Scrape
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        state: [ca, ia, ny]
+    steps:
+      - name: Hello world
+        run: echo "Scraping data for ${{ matrix.state }}"
+      
+      #first we need to clone our repo onto the blank computer, so it can execute our code!
+      - name: Checkout
+        uses: actions/checkout@v4
+        #uses tells it that you're using a marketplace step
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          #the documentation will list how to install other languages, too
+       
+      - name: Install scraper
+        run: pip install warn-scraper
+
+      - name: Scrape
+        run: warn-scraper ${{ matrix.state }} --data-dir ./data/
+        #--data-dir specifies the data directory that the data is being sent to
+        
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.state }}
+          path: ./data/${{ matrix.state }}.csv
+  commit:
+    name: Commit
+    runs-on: ubuntu-latest
+    needs: scrape
+    #the above means that this is dependent on the scrape function
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Download Artifact
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*'
+          path: artifacts/
+          
+      - name: Move
+        run: |
+          mkdir data -p
+          mv artifacts/**/*.csv data/
+          
+      - name: Save datestamp
+        run: date > ./data/latest-scrape.txt
+
+      - name: Commit and push
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@users.noreply.github.com"
+          git add ./data/
+          git commit -m "Latest data" && git push || true
